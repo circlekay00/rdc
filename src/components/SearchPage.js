@@ -8,53 +8,64 @@ import {
   Paper
 } from "@mui/material";
 
-import {
-  collection,
-  getDocs
-} from "firebase/firestore";
-
+import { collection, getDocs, limit, query } from "firebase/firestore";
 import { db } from "../firebase";
 
 function SearchPage() {
   const [search, setSearch] = useState("");
   const [results, setResults] = useState([]);
+  const [allItems, setAllItems] = useState([]);
   const [loading, setLoading] = useState(false);
 
+  // 🔥 Load a reasonable dataset ONLY ONCE
   useEffect(() => {
-    // 🚀 DEBOUNCE SEARCH (300ms)
-    const delay = setTimeout(async () => {
-      const term = search.trim().toLowerCase();
+    const loadItems = async () => {
+      const q = query(collection(db, "items"), limit(2000));
+      const snap = await getDocs(q);
 
-      if (!term) {
+      setAllItems(
+        snap.docs.map(d => ({
+          id: d.id,
+          ...d.data()
+        }))
+      );
+    };
+
+    loadItems();
+  }, []);
+
+  // 🔍 TRUE LETTER-BY-LETTER + MULTI-WORD SEARCH
+  useEffect(() => {
+    const runSearch = () => {
+      const text = search.trim().toLowerCase();
+
+      if (text.length === 0) {
         setResults([]);
-        setLoading(false);
         return;
       }
 
       setLoading(true);
 
-      try {
-        // 🔥 FETCH ONCE, FILTER FAST (small dataset)
-        const snap = await getDocs(collection(db, "items"));
+      const words = text.split(" ").filter(Boolean);
 
-        const filtered = snap.docs
-          .map(d => ({ id: d.id, ...d.data() }))
-          .filter(item =>
-            item.searchTokens?.some(token =>
-              token.includes(term)
-            )
-          );
+      const filtered = allItems.filter(item => {
+        const haystack = `
+          ${item.itemDescription || ""}
+          ${item.upcRetail || ""}
+          ${item.itemNumber || ""}
+          ${item.category || ""}
+        `.toLowerCase();
 
-        setResults(filtered);
-      } catch (err) {
-        console.error("Search error:", err);
-      }
+        // ✅ ALL WORDS MUST MATCH (anywhere, partial allowed)
+        return words.every(word => haystack.includes(word));
+      });
 
+      setResults(filtered);
       setLoading(false);
-    }, 300);
+    };
 
-    return () => clearTimeout(delay);
-  }, [search]);
+    runSearch();
+  }, [search, allItems]);
 
   return (
     <Box sx={{ p: 2 }}>
@@ -86,7 +97,7 @@ function SearchPage() {
       >
         <TextField
           fullWidth
-          placeholder="Search by description, UPC, or item #"
+          placeholder="Search item, UPC, number, category…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           InputProps={{
@@ -97,32 +108,19 @@ function SearchPage() {
           }}
           sx={{
             "& fieldset": { border: "none" },
-            input: { padding: "12px" }
+            input: { padding: "14px" }
           }}
         />
       </Paper>
 
-      {/* 💤 EMPTY STATE */}
-      {!search && (
-        <Typography
-          sx={{
-            textAlign: "center",
-            opacity: 0.6,
-            mt: 4
-          }}
-        >
+      {/* EMPTY STATE */}
+      {search.length === 0 && (
+        <Typography sx={{ textAlign: "center", opacity: 0.6, mt: 4 }}>
           Start typing to search items
         </Typography>
       )}
 
-      {/* ⏳ LOADING */}
-      {loading && (
-        <Typography sx={{ textAlign: "center", mt: 2 }}>
-          Searching…
-        </Typography>
-      )}
-
-      {/* 🔎 RESULTS */}
+      {/* RESULTS */}
       <List>
         {results.map(item => (
           <ListItem
@@ -137,7 +135,7 @@ function SearchPage() {
             <Box>
               <Typography
                 sx={{
-                  fontSize: "1.2rem",
+                  fontSize: "1.25rem",
                   fontWeight: 700,
                   background: "linear-gradient(90deg,#ff9800,#ffb74d)",
                   WebkitBackgroundClip: "text",
@@ -147,7 +145,7 @@ function SearchPage() {
                 {item.itemDescription || "Unnamed Item"}
               </Typography>
 
-              <Typography sx={{ fontSize: "0.9rem", color: "#aaa", mt: 0.5 }}>
+              <Typography sx={{ fontSize: "0.9rem", color: "#aaa" }}>
                 UPC: {item.upcRetail || "—"} <br />
                 Item #: {item.itemNumber || "—"} <br />
                 Category: {item.category || "—"}
@@ -156,6 +154,12 @@ function SearchPage() {
           </ListItem>
         ))}
       </List>
+
+      {loading && (
+        <Typography sx={{ textAlign: "center", mt: 2 }}>
+          Searching…
+        </Typography>
+      )}
     </Box>
   );
 }
