@@ -4,138 +4,160 @@ import {
   TextField,
   Typography,
   Button,
+  Paper,
   List,
-  ListItem,
-  Paper
+  ListItem
 } from "@mui/material";
 
 import {
   collection,
+  query,
+  where,
+  getDocs,
   addDoc,
   updateDoc,
   deleteDoc,
-  doc,
-  getDocs,
-  query,
-  where,
-  serverTimestamp
+  doc
 } from "firebase/firestore";
 
+import { Html5Qrcode } from "html5-qrcode";
 import { db } from "../firebase";
 
-/* 🔍 SEARCH TOKEN BUILDER */
-function buildSearchTokens(text) {
-  if (!text) return [];
-  const lower = text.toLowerCase();
-  const tokens = new Set();
+/* 🔹 TOKEN GENERATOR */
+const buildTokens = (item) => {
+  const text = `
+    ${item.itemDescription || ""}
+    ${item.itemNumber || ""}
+    ${item.upcRetail || ""}
+    ${item.category || ""}
+  `.toLowerCase();
 
-  lower.split(/\s+/).forEach(word => {
+  const tokens = new Set();
+  text.split(/\s+/).forEach(word => {
     for (let i = 1; i <= word.length; i++) {
-      tokens.add(word.slice(0, i));
+      tokens.add(word.substring(0, i));
     }
   });
 
   return Array.from(tokens);
-}
+};
 
 function AdminPanel() {
   const [search, setSearch] = useState("");
-  const [items, setItems] = useState([]);
-
+  const [results, setResults] = useState([]);
   const [showForm, setShowForm] = useState(false);
-  const [editingId, setEditingId] = useState(null);
+  const [editing, setEditing] = useState(null);
+  const [scannerOn, setScannerOn] = useState(false);
 
   const [form, setForm] = useState({
     itemDescription: "",
-    category: "",
     itemNumber: "",
-    upcCase: "",
-    upcRetail: ""
+    upcRetail: "",
+    category: ""
   });
 
-  /* 🔎 SEARCH ITEMS (ADMIN) */
+  /* 🔍 SEARCH */
   useEffect(() => {
     const runSearch = async () => {
-      if (search.trim().length === 0) {
-        setItems([]);
+      if (!search.trim()) {
+        setResults([]);
         return;
       }
 
+      const words = search.toLowerCase().split(/\s+/);
+
       const q = query(
         collection(db, "items"),
-        where("searchTokens", "array-contains", search.toLowerCase())
+        where("searchTokens", "array-contains", words[0])
       );
 
       const snap = await getDocs(q);
-      setItems(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+
+      const ranked = snap.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .filter(item =>
+          words.every(w =>
+            item.searchTokens?.includes(w) ||
+            item.itemDescription?.toLowerCase().includes(w)
+          )
+        );
+
+      setResults(ranked);
     };
 
     runSearch();
   }, [search]);
 
-  /* ➕ ADD / ✏️ UPDATE ITEM */
-  const handleSave = async () => {
-    if (!form.itemDescription.trim()) return;
+  /* 📸 BARCODE SCANNER */
+  useEffect(() => {
+    if (!scannerOn) return;
 
-    const searchTokens = buildSearchTokens(
-      `${form.itemDescription} ${form.category} ${form.itemNumber} ${form.upcRetail}`
-    );
+    const scanner = new Html5Qrcode("barcode-reader");
 
-    if (editingId) {
-      await updateDoc(doc(db, "items", editingId), {
-        ...form,
-        searchTokens,
-        updatedAt: serverTimestamp()
-      });
+    scanner
+      .start(
+        { facingMode: "environment" },
+        { fps: 10, qrbox: 250 },
+        (decodedText) => {
+          scanner.stop();
+          setScannerOn(false);
+
+          setForm({
+            itemDescription: "",
+            itemNumber: "",
+            upcRetail: decodedText,
+            category: ""
+          });
+
+          setEditing(null);
+          setShowForm(true);
+        }
+      )
+      .catch(err => console.error("Scanner error", err));
+
+    return () => {
+      scanner.stop().catch(() => {});
+    };
+  }, [scannerOn]);
+
+  /* ➕ ADD / ✏️ UPDATE */
+  const saveItem = async () => {
+    const payload = {
+      ...form,
+      searchTokens: buildTokens(form)
+    };
+
+    if (editing) {
+      await updateDoc(doc(db, "items", editing.id), payload);
     } else {
-      await addDoc(collection(db, "items"), {
-        ...form,
-        searchTokens,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
-      });
+      await addDoc(collection(db, "items"), payload);
     }
 
-    // reset
     setForm({
       itemDescription: "",
-      category: "",
       itemNumber: "",
-      upcCase: "",
-      upcRetail: ""
+      upcRetail: "",
+      category: ""
     });
-
-    setEditingId(null);
+    setEditing(null);
     setShowForm(false);
+    setSearch("");
+    setResults([]);
   };
 
-  /* ✏️ START EDIT */
-  const startEdit = (item) => {
-    setEditingId(item.id);
-    setShowForm(true);
-    setForm({
-      itemDescription: item.itemDescription || "",
-      category: item.category || "",
-      itemNumber: item.itemNumber || "",
-      upcCase: item.upcCase || "",
-      upcRetail: item.upcRetail || ""
-    });
-  };
-
-  /* 🗑 DELETE ITEM */
-  const handleDelete = async (id) => {
+  /* 🗑 DELETE */
+  const removeItem = async (id) => {
     await deleteDoc(doc(db, "items", id));
-    setItems(items.filter(i => i.id !== id));
+    setResults(r => r.filter(i => i.id !== id));
   };
 
   return (
     <Box sx={{ p: 2 }}>
-      {/* 🔶 TITLE */}
       <Typography
         sx={{
           textAlign: "center",
+          fontSize: "1.3rem",
           fontWeight: 800,
-          fontSize: "1.1rem",
           color: "#ff9800",
           mb: 2
         }}
@@ -143,128 +165,145 @@ function AdminPanel() {
         Admin Panel
       </Typography>
 
-      {/* 🔍 SEARCH BAR */}
-      <Paper
-        sx={{
-          p: 1.5,
-          mb: 2,
-          borderRadius: 3,
-          bgcolor: "#1c1c1c",
-          border: "1px solid #ff9800"
-        }}
-      >
+      {/* 🔍 SEARCH */}
+      <Paper sx={{ p: 1.5, mb: 2, bgcolor: "#1c1c1c", border: "1px solid #ff9800" }}>
         <TextField
           fullWidth
           placeholder="Search items"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          InputProps={{
-            sx: { color: "#ff9800" }
-          }}
-          sx={{
-            "& fieldset": { border: "none" },
-            input: { padding: "12px" }
-          }}
+          InputProps={{ sx: { color: "#ff9800" } }}
+          sx={{ "& fieldset": { border: "none" } }}
         />
       </Paper>
 
-      {/* ➕ ADD ITEM BUTTON */}
+      {/* 📸 SCAN BUTTON */}
       <Button
         fullWidth
-        variant="outlined"
-        sx={{ mb: 2 }}
-        onClick={() => {
-          setShowForm(true);
-          setEditingId(null);
-          setForm({
-            itemDescription: "",
-            category: "",
-            itemNumber: "",
-            upcCase: "",
-            upcRetail: ""
-          });
-        }}
+        variant="contained"
+        sx={{ mb: 1, bgcolor: "#1976d2" }}
+        onClick={() => setScannerOn(true)}
       >
-        Add Item
+        Scan Barcode to Add Item
       </Button>
 
-      {/* 📝 ADD / EDIT FORM (HIDDEN UNTIL CLICKED) */}
-      {showForm && (
-        <Paper sx={{ p: 2, mb: 3, bgcolor: "#1e1e1e" }}>
-          {Object.keys(form).map(key => (
-            <TextField
-              key={key}
-              fullWidth
-              label={key}
-              value={form[key]}
-              onChange={(e) =>
-                setForm({ ...form, [key]: e.target.value })
-              }
-              sx={{ mb: 1 }}
-            />
-          ))}
-
-          <Box sx={{ display: "flex", gap: 1 }}>
-            <Button fullWidth variant="contained" onClick={handleSave}>
-              {editingId ? "Update Item" : "Save Item"}
-            </Button>
-
-            <Button
-              fullWidth
-              color="error"
-              onClick={() => {
-                setShowForm(false);
-                setEditingId(null);
-              }}
-            >
-              Cancel
-            </Button>
-          </Box>
+      {/* 📷 CAMERA */}
+      {scannerOn && (
+        <Paper sx={{ p: 1, mb: 2 }}>
+          <div id="barcode-reader" style={{ width: "100%" }} />
+          <Button
+            fullWidth
+            color="error"
+            onClick={() => setScannerOn(false)}
+          >
+            Cancel Scan
+          </Button>
         </Paper>
       )}
 
-      {/* 📦 SEARCH RESULTS */}
-      <List>
-        {items.map(item => (
-          <ListItem
-            key={item.id}
-            sx={{
-              mb: 1,
-              bgcolor: "#1c1c1c",
-              borderRadius: 2,
-              flexDirection: "column",
-              alignItems: "flex-start"
-            }}
+      {/* ➕ ADD BUTTON */}
+      <Button
+        fullWidth
+        variant="contained"
+        sx={{ mb: 2, bgcolor: "#ff9800" }}
+        onClick={() => {
+          setShowForm(!showForm);
+          setEditing(null);
+        }}
+      >
+        {showForm ? "Cancel" : "Add Item Manually"}
+      </Button>
+
+      {/* 📝 FORM */}
+      {showForm && (
+        <Paper sx={{ p: 2, mb: 2, bgcolor: "#1e1e1e" }}>
+          {["itemDescription", "itemNumber", "upcRetail", "category"].map(f => (
+            <TextField
+              key={f}
+              fullWidth
+              label={f}
+              value={form[f]}
+              onChange={e =>
+                setForm({ ...form, [f]: e.target.value })
+              }
+              sx={{ mb: 1 }}
+              InputProps={{ sx: { color: "#fff" } }}
+            />
+          ))}
+
+          <Button
+            fullWidth
+            variant="contained"
+            sx={{ bgcolor: "#ff9800" }}
+            onClick={saveItem}
           >
-            <Typography sx={{ fontWeight: 700 }}>
-              {item.itemDescription || "Unnamed Item"}
-            </Typography>
-
-            <Typography sx={{ fontSize: "0.8rem", opacity: 0.7 }}>
-              #{item.itemNumber || "—"} • {item.category || "—"}
-            </Typography>
-
-            <Box sx={{ display: "flex", gap: 1, mt: 1 }}>
-              <Button size="small" onClick={() => startEdit(item)}>
-                Edit
-              </Button>
-              <Button
-                size="small"
-                color="error"
-                onClick={() => handleDelete(item.id)}
-              >
-                Delete
-              </Button>
-            </Box>
-          </ListItem>
-        ))}
-      </List>
-
-      {search.length === 0 && (
-        <Typography sx={{ textAlign: "center", opacity: 0.6, mt: 3 }}>
-          Start typing to search items
-        </Typography>
+            Save Item
+          </Button>
+        </Paper>
       )}
+
+      {/* 📋 RESULTS */}
+      <List>
+  {results.map(item => (
+    <ListItem
+      key={item.id}
+      sx={{
+        mb: 1.5,
+        borderRadius: 3,
+        bgcolor: "#1e1e1e",
+        p: 2,
+        display: "flex",
+        justifyContent: "space-between"
+      }}
+    >
+      <Box sx={{ flex: 1 }}>
+        {/* 🔶 DESCRIPTION */}
+        <Typography
+          sx={{
+            fontSize: "1.05rem",
+            fontWeight: 700,
+            background: "linear-gradient(90deg,#ff9800,#ffb74d)",
+            WebkitBackgroundClip: "text",
+            WebkitTextFillColor: "transparent"
+          }}
+        >
+          {item.itemDescription || "Unnamed Item"}
+        </Typography>
+
+        {/* 🔹 DETAILS */}
+        <Typography sx={{ fontSize: "0.85rem", color: "#aaa", mt: 0.5 }}>
+          Item #: {item.itemNumber || "—"} <br />
+          UPC: {item.upcRetail || "—"} <br />
+          Category: {item.category || "—"}
+        </Typography>
+      </Box>
+
+      {/* 🛠 ACTIONS */}
+      <Box sx={{ display: "flex", flexDirection: "column", ml: 1 }}>
+        <Button
+          size="small"
+          sx={{ color: "#4fc3f7" }}
+          onClick={() => {
+            setEditing(item);
+            setForm(item);
+            setShowForm(true);
+          }}
+        >
+          Edit
+        </Button>
+
+        <Button
+          size="small"
+          color="error"
+          onClick={() => removeItem(item.id)}
+        >
+          Delete
+        </Button>
+      </Box>
+    </ListItem>
+  ))}
+</List>
+
     </Box>
   );
 }
