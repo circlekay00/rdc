@@ -8,64 +8,58 @@ import {
   Paper
 } from "@mui/material";
 
-import { collection, getDocs, limit, query } from "firebase/firestore";
+import {
+  collection,
+  query,
+  where,
+  getDocs
+} from "firebase/firestore";
+
 import { db } from "../firebase";
 
 function SearchPage() {
   const [search, setSearch] = useState("");
   const [results, setResults] = useState([]);
-  const [allItems, setAllItems] = useState([]);
   const [loading, setLoading] = useState(false);
 
-  // 🔥 Load a reasonable dataset ONLY ONCE
   useEffect(() => {
-    const loadItems = async () => {
-      const q = query(collection(db, "items"), limit(2000));
-      const snap = await getDocs(q);
+    const runSearch = async () => {
+      const trimmed = search.trim().toLowerCase();
 
-      setAllItems(
-        snap.docs.map(d => ({
-          id: d.id,
-          ...d.data()
-        }))
-      );
-    };
-
-    loadItems();
-  }, []);
-
-  // 🔍 TRUE LETTER-BY-LETTER + MULTI-WORD SEARCH
-  useEffect(() => {
-    const runSearch = () => {
-      const text = search.trim().toLowerCase();
-
-      if (text.length === 0) {
+      if (trimmed.length === 0) {
         setResults([]);
         return;
       }
 
+      // ✅ IMPORTANT FIX:
+      // Search ONLY the last word typed
+      const lastWord = trimmed.split(" ").pop();
+
       setLoading(true);
 
-      const words = text.split(" ").filter(Boolean);
+      try {
+        const q = query(
+          collection(db, "items"),
+          where("searchTokens", "array-contains", lastWord)
+        );
 
-      const filtered = allItems.filter(item => {
-        const haystack = `
-          ${item.itemDescription || ""}
-          ${item.upcRetail || ""}
-          ${item.itemNumber || ""}
-          ${item.category || ""}
-        `.toLowerCase();
+        const snap = await getDocs(q);
 
-        // ✅ ALL WORDS MUST MATCH (anywhere, partial allowed)
-        return words.every(word => haystack.includes(word));
-      });
+        setResults(
+          snap.docs.map(d => ({
+            id: d.id,
+            ...d.data()
+          }))
+        );
+      } catch (err) {
+        console.error("Search error:", err);
+      }
 
-      setResults(filtered);
       setLoading(false);
     };
 
     runSearch();
-  }, [search, allItems]);
+  }, [search]);
 
   return (
     <Box sx={{ p: 2 }}>
@@ -73,12 +67,10 @@ function SearchPage() {
       <Typography
         sx={{
           textAlign: "center",
-          fontSize: "1.6rem",
+          fontSize: "1.3rem",
           fontWeight: 800,
-          mb: 2,
-          background: "linear-gradient(90deg,#ff9800,#ffb74d)",
-          WebkitBackgroundClip: "text",
-          WebkitTextFillColor: "transparent"
+          color: "#ff9800",
+          mb: 2
         }}
       >
         RDC Item Search
@@ -97,25 +89,31 @@ function SearchPage() {
       >
         <TextField
           fullWidth
-          placeholder="Search item, UPC, number, category…"
+          placeholder="Search by description, UPC, item number"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           InputProps={{
             sx: {
               color: "#fff",
-              fontSize: "1.1rem"
+              fontSize: "1.05rem"
             }
           }}
           sx={{
             "& fieldset": { border: "none" },
-            input: { padding: "14px" }
+            input: { padding: "12px" }
           }}
         />
       </Paper>
 
       {/* EMPTY STATE */}
       {search.length === 0 && (
-        <Typography sx={{ textAlign: "center", opacity: 0.6, mt: 4 }}>
+        <Typography
+          sx={{
+            textAlign: "center",
+            opacity: 0.6,
+            mt: 4
+          }}
+        >
           Start typing to search items
         </Typography>
       )}
@@ -133,9 +131,10 @@ function SearchPage() {
             }}
           >
             <Box>
+              {/* 🔶 DESCRIPTION (BIG + GRADIENT) */}
               <Typography
                 sx={{
-                  fontSize: "1.25rem",
+                  fontSize: "1.15rem",
                   fontWeight: 700,
                   background: "linear-gradient(90deg,#ff9800,#ffb74d)",
                   WebkitBackgroundClip: "text",
@@ -145,7 +144,8 @@ function SearchPage() {
                 {item.itemDescription || "Unnamed Item"}
               </Typography>
 
-              <Typography sx={{ fontSize: "0.9rem", color: "#aaa" }}>
+              {/* META */}
+              <Typography sx={{ fontSize: "0.85rem", color: "#aaa" }}>
                 UPC: {item.upcRetail || "—"} <br />
                 Item #: {item.itemNumber || "—"} <br />
                 Category: {item.category || "—"}

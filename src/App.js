@@ -15,13 +15,13 @@ import { auth } from "./firebase";
 
 import SearchPage from "./components/SearchPage";
 import AdminPanel from "./components/AdminPanel";
-import AdminLoginModal from "./components/AdminLoginModal";
+
+const BOTTOM_NAV_HEIGHT = 56;
 
 function App() {
   const [tab, setTab] = useState(0);
   const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [showAdminLogin, setShowAdminLogin] = useState(false);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (user) => {
@@ -37,23 +37,14 @@ function App() {
     return () => unsub();
   }, []);
 
-  const handleTabChange = (e, value) => {
-    // 🔐 ADMIN TAB CLICKED
-    if (value === 1 && !isAdmin) {
-      setShowAdminLogin(true);
-      return;
-    }
-    setTab(value);
-  };
-
   if (loading) {
     return (
       <Box
         sx={{
           height: "100vh",
           display: "flex",
-          justifyContent: "center",
           alignItems: "center",
+          justifyContent: "center",
           bgcolor: "#121212"
         }}
       >
@@ -63,36 +54,64 @@ function App() {
   }
 
   return (
-    <Box sx={{ height: "100vh", bgcolor: "#121212", color: "#fff" }}>
-      <Box sx={{ pb: 7 }}>
+    <Box
+      sx={{
+        height: "100vh",
+        display: "flex",
+        flexDirection: "column",
+        bgcolor: "#121212",
+        color: "#fff"
+      }}
+    >
+      {/* 🔽 SCROLLABLE CONTENT */}
+      <Box
+        sx={{
+          flex: 1,
+          overflowY: "auto",
+          pb: `${BOTTOM_NAV_HEIGHT + 48}px`
+        }}
+      >
         {tab === 0 && <SearchPage />}
+
         {tab === 1 && isAdmin && <AdminPanel />}
 
         {tab === 1 && !isAdmin && (
-          <Typography sx={{ textAlign: "center", mt: 4, opacity: 0.7 }}>
-            Admin login required
-          </Typography>
+          <Box sx={{ p: 3, textAlign: "center" }}>
+            <Typography color="error">
+              Admin access required
+            </Typography>
+          </Box>
         )}
+
+        {/* 🦶 FOOTER (NOW VISIBLE) */}
+        <Box
+          sx={{
+            mt: 6,
+            py: 3,
+            textAlign: "center",
+            borderTop: "1px solid #333",
+            color: "#888"
+          }}
+        >
+          <Typography variant="body2">
+            Circle K Inc. RDC Item Search
+          </Typography>
+          <Typography variant="caption">
+            © {new Date().getFullYear()} • Courtesy of muhammad.azeem@circlek.com
+          </Typography>
+        </Box>
       </Box>
 
-      {/* 🔐 ADMIN LOGIN MODAL */}
-      <AdminLoginModal
-        open={showAdminLogin}
-        onClose={() => {
-          setShowAdminLogin(false);
-          setTab(0);
-        }}
-      />
-
-      {/* 🔻 BOTTOM NAV */}
+      {/* 🔒 FIXED BOTTOM NAV */}
       <BottomNavigation
         value={tab}
-        onChange={handleTabChange}
-        showLabels
+        onChange={(e, v) => setTab(v)}
         sx={{
+          height: BOTTOM_NAV_HEIGHT,
           position: "fixed",
           bottom: 0,
-          width: "100%",
+          left: 0,
+          right: 0,
           bgcolor: "#1c1c1c",
           borderTop: "1px solid #333"
         }}
@@ -100,11 +119,17 @@ function App() {
         <BottomNavigationAction
           label="Search"
           icon={<SearchIcon />}
+          sx={{
+            color: tab === 0 ? "#2196f3" : "#777"
+          }}
         />
 
         <BottomNavigationAction
           label="Admin"
           icon={<AdminPanelSettingsIcon />}
+          sx={{
+            color: tab === 1 ? "#2196f3" : "#777"
+          }}
         />
       </BottomNavigation>
     </Box>

@@ -3,113 +3,129 @@ import {
   Box,
   TextField,
   Typography,
+  Button,
   List,
   ListItem,
-  Paper,
-  Button,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions
+  Paper
 } from "@mui/material";
 
 import {
   collection,
-  getDocs,
   addDoc,
   updateDoc,
   deleteDoc,
   doc,
-  limit,
-  query
+  getDocs,
+  query,
+  where,
+  serverTimestamp
 } from "firebase/firestore";
 
 import { db } from "../firebase";
 
+/* 🔍 SEARCH TOKEN BUILDER */
+function buildSearchTokens(text) {
+  if (!text) return [];
+  const lower = text.toLowerCase();
+  const tokens = new Set();
+
+  lower.split(/\s+/).forEach(word => {
+    for (let i = 1; i <= word.length; i++) {
+      tokens.add(word.slice(0, i));
+    }
+  });
+
+  return Array.from(tokens);
+}
+
 function AdminPanel() {
   const [search, setSearch] = useState("");
-  const [allItems, setAllItems] = useState([]);
-  const [results, setResults] = useState([]);
+  const [items, setItems] = useState([]);
 
-  const [open, setOpen] = useState(false);
-  const [editing, setEditing] = useState(null);
+  const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState(null);
 
   const [form, setForm] = useState({
     itemDescription: "",
-    upcRetail: "",
+    category: "",
     itemNumber: "",
-    category: ""
+    upcCase: "",
+    upcRetail: ""
   });
 
-  // 🔥 LOAD DATASET ONCE
+  /* 🔎 SEARCH ITEMS (ADMIN) */
   useEffect(() => {
-    const loadItems = async () => {
-      const q = query(collection(db, "items"), limit(2000));
-      const snap = await getDocs(q);
+    const runSearch = async () => {
+      if (search.trim().length === 0) {
+        setItems([]);
+        return;
+      }
 
-      setAllItems(
-        snap.docs.map(d => ({
-          id: d.id,
-          ...d.data()
-        }))
+      const q = query(
+        collection(db, "items"),
+        where("searchTokens", "array-contains", search.toLowerCase())
       );
+
+      const snap = await getDocs(q);
+      setItems(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     };
 
-    loadItems();
-  }, []);
+    runSearch();
+  }, [search]);
 
-  // 🔍 SAME SEARCH LOGIC AS SEARCH PAGE
-  useEffect(() => {
-    const text = search.trim().toLowerCase();
-
-    if (text.length === 0) {
-      setResults([]);
-      return;
-    }
-
-    const words = text.split(" ").filter(Boolean);
-
-    const filtered = allItems.filter(item => {
-      const haystack = `
-        ${item.itemDescription || ""}
-        ${item.upcRetail || ""}
-        ${item.itemNumber || ""}
-        ${item.category || ""}
-      `.toLowerCase();
-
-      return words.every(word => haystack.includes(word));
-    });
-
-    setResults(filtered);
-  }, [search, allItems]);
-
-  // ➕ ADD / ✏️ EDIT
+  /* ➕ ADD / ✏️ UPDATE ITEM */
   const handleSave = async () => {
-    if (editing) {
-      await updateDoc(doc(db, "items", editing.id), form);
+    if (!form.itemDescription.trim()) return;
+
+    const searchTokens = buildSearchTokens(
+      `${form.itemDescription} ${form.category} ${form.itemNumber} ${form.upcRetail}`
+    );
+
+    if (editingId) {
+      await updateDoc(doc(db, "items", editingId), {
+        ...form,
+        searchTokens,
+        updatedAt: serverTimestamp()
+      });
     } else {
-      await addDoc(collection(db, "items"), form);
+      await addDoc(collection(db, "items"), {
+        ...form,
+        searchTokens,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
     }
 
-    setOpen(false);
-    setEditing(null);
+    // reset
     setForm({
       itemDescription: "",
-      upcRetail: "",
+      category: "",
       itemNumber: "",
-      category: ""
+      upcCase: "",
+      upcRetail: ""
     });
 
-    // refresh
-    const snap = await getDocs(query(collection(db, "items"), limit(2000)));
-    setAllItems(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    setEditingId(null);
+    setShowForm(false);
   };
 
-  // 🗑 DELETE
+  /* ✏️ START EDIT */
+  const startEdit = (item) => {
+    setEditingId(item.id);
+    setShowForm(true);
+    setForm({
+      itemDescription: item.itemDescription || "",
+      category: item.category || "",
+      itemNumber: item.itemNumber || "",
+      upcCase: item.upcCase || "",
+      upcRetail: item.upcRetail || ""
+    });
+  };
+
+  /* 🗑 DELETE ITEM */
   const handleDelete = async (id) => {
     await deleteDoc(doc(db, "items", id));
-    setResults(results.filter(i => i.id !== id));
-    setAllItems(allItems.filter(i => i.id !== id));
+    setItems(items.filter(i => i.id !== id));
   };
 
   return (
@@ -118,138 +134,137 @@ function AdminPanel() {
       <Typography
         sx={{
           textAlign: "center",
-          fontSize: "1.5rem",
           fontWeight: 800,
-          mb: 2,
-          color: "#ff9800"
+          fontSize: "1.1rem",
+          color: "#ff9800",
+          mb: 2
         }}
       >
         Admin Panel
       </Typography>
 
-      {/* 🔍 SEARCH */}
+      {/* 🔍 SEARCH BAR */}
       <Paper
         sx={{
           p: 1.5,
           mb: 2,
+          borderRadius: 3,
           bgcolor: "#1c1c1c",
-          border: "1px solid #ff9800",
-          borderRadius: 3
+          border: "1px solid #ff9800"
         }}
       >
         <TextField
           fullWidth
-          placeholder="Search items (admin)"
+          placeholder="Search items"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           InputProps={{
-            sx: { color: "#ff9800", fontSize: "1.1rem" }
+            sx: { color: "#ff9800" }
           }}
-          sx={{ "& fieldset": { border: "none" } }}
+          sx={{
+            "& fieldset": { border: "none" },
+            input: { padding: "12px" }
+          }}
         />
       </Paper>
 
+      {/* ➕ ADD ITEM BUTTON */}
       <Button
         fullWidth
-        variant="contained"
+        variant="outlined"
         sx={{ mb: 2 }}
         onClick={() => {
-          setEditing(null);
+          setShowForm(true);
+          setEditingId(null);
           setForm({
             itemDescription: "",
-            upcRetail: "",
+            category: "",
             itemNumber: "",
-            category: ""
+            upcCase: "",
+            upcRetail: ""
           });
-          setOpen(true);
         }}
       >
         Add Item
       </Button>
 
-      {/* 🚫 NO SEARCH = NO ITEMS */}
-      {search.length === 0 && (
-        <Typography sx={{ textAlign: "center", opacity: 0.6 }}>
-          Start typing to search items
-        </Typography>
+      {/* 📝 ADD / EDIT FORM (HIDDEN UNTIL CLICKED) */}
+      {showForm && (
+        <Paper sx={{ p: 2, mb: 3, bgcolor: "#1e1e1e" }}>
+          {Object.keys(form).map(key => (
+            <TextField
+              key={key}
+              fullWidth
+              label={key}
+              value={form[key]}
+              onChange={(e) =>
+                setForm({ ...form, [key]: e.target.value })
+              }
+              sx={{ mb: 1 }}
+            />
+          ))}
+
+          <Box sx={{ display: "flex", gap: 1 }}>
+            <Button fullWidth variant="contained" onClick={handleSave}>
+              {editingId ? "Update Item" : "Save Item"}
+            </Button>
+
+            <Button
+              fullWidth
+              color="error"
+              onClick={() => {
+                setShowForm(false);
+                setEditingId(null);
+              }}
+            >
+              Cancel
+            </Button>
+          </Box>
+        </Paper>
       )}
 
-      {/* 📋 RESULTS */}
+      {/* 📦 SEARCH RESULTS */}
       <List>
-        {results.map(item => (
+        {items.map(item => (
           <ListItem
             key={item.id}
             sx={{
-              mb: 1.5,
-              bgcolor: "#1e1e1e",
-              borderRadius: 3,
-              p: 2
+              mb: 1,
+              bgcolor: "#1c1c1c",
+              borderRadius: 2,
+              flexDirection: "column",
+              alignItems: "flex-start"
             }}
           >
-            <Box sx={{ width: "100%" }}>
-              <Typography sx={{ fontWeight: 700, color: "#ff9800" }}>
-                {item.itemDescription || "Unnamed Item"}
-              </Typography>
+            <Typography sx={{ fontWeight: 700 }}>
+              {item.itemDescription || "Unnamed Item"}
+            </Typography>
 
-              <Typography sx={{ fontSize: "0.85rem", color: "#aaa" }}>
-                UPC: {item.upcRetail || "—"} <br />
-                Item #: {item.itemNumber || "—"} <br />
-                Category: {item.category || "—"}
-              </Typography>
+            <Typography sx={{ fontSize: "0.8rem", opacity: 0.7 }}>
+              #{item.itemNumber || "—"} • {item.category || "—"}
+            </Typography>
 
-              <Box sx={{ mt: 1, display: "flex", gap: 1 }}>
-                <Button
-                  size="small"
-                  onClick={() => {
-                    setEditing(item);
-                    setForm(item);
-                    setOpen(true);
-                  }}
-                >
-                  Edit
-                </Button>
-
-                <Button
-                  size="small"
-                  color="error"
-                  onClick={() => handleDelete(item.id)}
-                >
-                  Delete
-                </Button>
-              </Box>
+            <Box sx={{ display: "flex", gap: 1, mt: 1 }}>
+              <Button size="small" onClick={() => startEdit(item)}>
+                Edit
+              </Button>
+              <Button
+                size="small"
+                color="error"
+                onClick={() => handleDelete(item.id)}
+              >
+                Delete
+              </Button>
             </Box>
           </ListItem>
         ))}
       </List>
 
-      {/* ✏️ MODAL */}
-      <Dialog open={open} onClose={() => setOpen(false)} fullWidth>
-        <DialogTitle>
-          {editing ? "Edit Item" : "Add Item"}
-        </DialogTitle>
-
-        <DialogContent>
-          {["itemDescription", "upcRetail", "itemNumber", "category"].map(f => (
-            <TextField
-              key={f}
-              fullWidth
-              margin="dense"
-              label={f}
-              value={form[f]}
-              onChange={(e) =>
-                setForm({ ...form, [f]: e.target.value })
-              }
-            />
-          ))}
-        </DialogContent>
-
-        <DialogActions>
-          <Button onClick={() => setOpen(false)}>Cancel</Button>
-          <Button onClick={handleSave} variant="contained">
-            Save
-          </Button>
-        </DialogActions>
-      </Dialog>
+      {search.length === 0 && (
+        <Typography sx={{ textAlign: "center", opacity: 0.6, mt: 3 }}>
+          Start typing to search items
+        </Typography>
+      )}
     </Box>
   );
 }
