@@ -108,7 +108,7 @@ function SearchPage() {
           mb: 2
         }}
       >
-        RDC Item Search
+        Questions | muhammad.azeem@circlek.com
       </Typography>
 
       {/* 🔍 SEARCH */}

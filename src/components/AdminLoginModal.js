@@ -3,6 +3,7 @@ import {
   Dialog,
   DialogTitle,
   DialogContent,
+  DialogActions,
   TextField,
   Button,
   Typography,
@@ -24,7 +25,7 @@ function AdminLoginModal({ open, onClose }) {
 
     try {
       await signInWithEmailAndPassword(auth, email, password);
-      onClose(); // 🔥 CLOSE MODAL ON SUCCESS
+      onClose();
     } catch (err) {
       setError("Invalid admin credentials");
     }
@@ -33,11 +34,23 @@ function AdminLoginModal({ open, onClose }) {
   };
 
   return (
-    <Dialog open={open} onClose={onClose} fullWidth maxWidth="xs">
+    <Dialog
+      open={open}
+      onClose={onClose}
+      fullWidth
+      maxWidth="xs"
+      PaperProps={{
+        sx: {
+          bgcolor: "#121212",
+          color: "#fff",
+          borderRadius: 3
+        }
+      }}
+    >
       <DialogTitle
         sx={{
           textAlign: "center",
-          fontWeight: 800,
+          fontWeight: 700,
           color: "#ff9800"
         }}
       >
@@ -45,42 +58,74 @@ function AdminLoginModal({ open, onClose }) {
       </DialogTitle>
 
       <DialogContent>
-        <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+        <Box sx={{ mt: 1 }}>
           <TextField
-            label="Admin Email"
+            fullWidth
+            label="Email"
+            type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            fullWidth
+            sx={{ mb: 2 }}
+            InputLabelProps={{ style: { color: "#aaa" } }}
+            InputProps={{
+              sx: {
+                color: "#fff",
+                bgcolor: "#1c1c1c"
+              }
+            }}
           />
 
           <TextField
+            fullWidth
             label="Password"
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            fullWidth
+            InputLabelProps={{ style: { color: "#aaa" } }}
+            InputProps={{
+              sx: {
+                color: "#fff",
+                bgcolor: "#1c1c1c"
+              }
+            }}
           />
 
           {error && (
-            <Typography color="error" textAlign="center">
+            <Typography
+              sx={{
+                color: "error.main",
+                mt: 2,
+                textAlign: "center"
+              }}
+            >
               {error}
             </Typography>
           )}
-
-          <Button
-            variant="contained"
-            onClick={handleLogin}
-            disabled={loading}
-            sx={{
-              mt: 1,
-              bgcolor: "#ff9800",
-              fontWeight: 700
-            }}
-          >
-            {loading ? "Signing in..." : "Login"}
-          </Button>
         </Box>
       </DialogContent>
+
+      <DialogActions sx={{ p: 2 }}>
+        <Button
+          onClick={onClose}
+          sx={{ color: "#aaa" }}
+        >
+          Cancel
+        </Button>
+
+        <Button
+          variant="contained"
+          onClick={handleLogin}
+          disabled={loading}
+          sx={{
+            bgcolor: "#ff9800",
+            color: "#000",
+            fontWeight: 700,
+            "&:hover": { bgcolor: "#ffb74d" }
+          }}
+        >
+          {loading ? "Signing in…" : "Login"}
+        </Button>
+      </DialogActions>
     </Dialog>
   );
 }

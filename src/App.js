@@ -4,24 +4,26 @@ import {
   BottomNavigation,
   BottomNavigationAction,
   CircularProgress,
-  Typography
+  Typography,
+  Button
 } from "@mui/material";
 
 import SearchIcon from "@mui/icons-material/Search";
 import AdminPanelSettingsIcon from "@mui/icons-material/AdminPanelSettings";
+import LogoutIcon from "@mui/icons-material/Logout";
 
-import { onAuthStateChanged } from "firebase/auth";
+import { onAuthStateChanged, signOut } from "firebase/auth";
 import { auth } from "./firebase";
 
 import SearchPage from "./components/SearchPage";
 import AdminPanel from "./components/AdminPanel";
-
-const BOTTOM_NAV_HEIGHT = 56;
+import AdminLoginModal from "./components/AdminLoginModal";
 
 function App() {
   const [tab, setTab] = useState(0);
-  const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [showAdminLogin, setShowAdminLogin] = useState(false);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (user) => {
@@ -37,18 +39,24 @@ function App() {
     return () => unsub();
   }, []);
 
+  const handleLogout = async () => {
+    await signOut(auth);
+    setIsAdmin(false);
+    setTab(0);
+  };
+
   if (loading) {
     return (
       <Box
         sx={{
           height: "100vh",
+          bgcolor: "#121212",
           display: "flex",
           alignItems: "center",
-          justifyContent: "center",
-          bgcolor: "#121212"
+          justifyContent: "center"
         }}
       >
-        <CircularProgress />
+        <CircularProgress sx={{ color: "#ff9800" }} />
       </Box>
     );
   }
@@ -57,61 +65,78 @@ function App() {
     <Box
       sx={{
         height: "100vh",
-        display: "flex",
-        flexDirection: "column",
         bgcolor: "#121212",
-        color: "#fff"
+        color: "#fff",
+        display: "flex",
+        flexDirection: "column"
       }}
     >
-      {/* 🔽 SCROLLABLE CONTENT */}
-      <Box
-        sx={{
-          flex: 1,
-          overflowY: "auto",
-          pb: `${BOTTOM_NAV_HEIGHT + 48}px`
-        }}
-      >
+      {/* 🔶 HEADER */}
+      <Box sx={{ p: 2, textAlign: "center" }}>
+        <Typography
+          sx={{
+            fontSize: "1.3rem",
+            fontWeight: 800,
+            color: "#ff9800"
+          }}
+        >
+          Search RDC Items
+        </Typography>
+      </Box>
+
+      {/* 🔶 CONTENT */}
+      <Box sx={{ flex: 1, overflow: "auto", pb: 7 }}>
         {tab === 0 && <SearchPage />}
 
         {tab === 1 && isAdmin && <AdminPanel />}
 
         {tab === 1 && !isAdmin && (
           <Box sx={{ p: 3, textAlign: "center" }}>
-            <Typography color="error">
+            <Typography sx={{ mb: 2 }}>
               Admin access required
             </Typography>
+
+            <Button
+              variant="contained"
+              onClick={() => setShowAdminLogin(true)}
+              sx={{
+                bgcolor: "#ff9800",
+                color: "#000",
+                fontWeight: 700,
+                "&:hover": { bgcolor: "#ffb74d" }
+              }}
+            >
+              Admin Login
+            </Button>
           </Box>
         )}
-
-        {/* 🦶 FOOTER (NOW VISIBLE) */}
-        <Box
-          sx={{
-            mt: 6,
-            py: 3,
-            textAlign: "center",
-            borderTop: "1px solid #333",
-            color: "#888"
-          }}
-        >
-          <Typography variant="body2">
-            Circle K Inc. RDC Item Search
-          </Typography>
-          <Typography variant="caption">
-            © {new Date().getFullYear()} • Courtesy of muhammad.azeem@circlek.com
-          </Typography>
-        </Box>
       </Box>
 
-      {/* 🔒 FIXED BOTTOM NAV */}
+      {/* 🔶 ADMIN LOGOUT */}
+      {isAdmin && (
+        <Box sx={{ textAlign: "center", pb: 1 }}>
+          <Button
+            startIcon={<LogoutIcon />}
+            onClick={handleLogout}
+            sx={{
+              color: "#ff9800",
+              fontWeight: 600
+            }}
+          >
+            Logout Admin
+          </Button>
+        </Box>
+      )}
+
+      {/* 🔶 BOTTOM NAV */}
       <BottomNavigation
         value={tab}
         onChange={(e, v) => setTab(v)}
+        showLabels
         sx={{
-          height: BOTTOM_NAV_HEIGHT,
           position: "fixed",
           bottom: 0,
-          left: 0,
-          right: 0,
+          width: "100%",
           bgcolor: "#1c1c1c",
           borderTop: "1px solid #333"
         }}
@@ -120,7 +145,7 @@ function App() {
           label="Search"
           icon={<SearchIcon />}
           sx={{
-            color: tab === 0 ? "#2196f3" : "#777"
+            color: tab === 0 ? "#2196f3" : "#aaa"
           }}
         />
 
@@ -128,10 +153,16 @@ function App() {
           label="Admin"
           icon={<AdminPanelSettingsIcon />}
           sx={{
-            color: tab === 1 ? "#2196f3" : "#777"
+            color: tab === 1 ? "#2196f3" : "#aaa"
           }}
         />
       </BottomNavigation>
+
+      {/* 🔐 ADMIN LOGIN MODAL */}
+      <AdminLoginModal
+        open={showAdminLogin}
+        onClose={() => setShowAdminLogin(false)}
+      />
     </Box>
   );
 }
