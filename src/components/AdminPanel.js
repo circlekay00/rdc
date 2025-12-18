@@ -42,7 +42,7 @@ const rankResults = (items, search) => {
       const text = `
         ${item.itemDescription || ""}
         ${item.itemNumber || ""}
-        ${item.upcRetail || ""}
+        ${item.upc || ""}
         ${item.category || ""}
       `.toLowerCase();
 
@@ -60,7 +60,6 @@ const rankResults = (items, search) => {
     .sort((a, b) => b._score - a._score);
 };
 
-/* -------------------- ADMIN PANEL -------------------- */
 function AdminPanel() {
   const [search, setSearch] = useState("");
   const [results, setResults] = useState([]);
@@ -72,7 +71,7 @@ function AdminPanel() {
   const [form, setForm] = useState({
     itemDescription: "",
     itemNumber: "",
-    upcRetail: "",
+    upc: "",
     category: ""
   });
 
@@ -113,7 +112,7 @@ function AdminPanel() {
     setForm({
       itemDescription: "",
       itemNumber: "",
-      upcRetail: "",
+      upc: "",
       category: ""
     });
     setOpen(true);
@@ -124,33 +123,48 @@ function AdminPanel() {
     setForm({
       itemDescription: item.itemDescription || "",
       itemNumber: item.itemNumber || "",
-      upcRetail: item.upcRetail || "",
+      upc: item.upc || "",
       category: item.category || ""
     });
     setOpen(true);
   };
 
   const saveItem = async () => {
-    const tokens = `${form.itemDescription} ${form.itemNumber} ${form.upcRetail} ${form.category}`
+    const tokens = `${form.itemDescription} ${form.itemNumber} ${form.upc} ${form.category}`
       .toLowerCase()
       .split(" ")
       .filter(Boolean);
 
     if (editing) {
-      await updateDoc(doc(db, "items", editing.id), {
+      const ref = doc(db, "items", editing.id);
+
+      await updateDoc(ref, {
         ...form,
         searchTokens: tokens
       });
+
+      // 🔥 UPDATE UI IN PLACE (THIS FIXES "NOT SAVING")
+      setResults(prev =>
+        prev.map(i =>
+          i.id === editing.id
+            ? { ...i, ...form, searchTokens: tokens }
+            : i
+        )
+      );
     } else {
-      await addDoc(collection(db, "items"), {
+      const docRef = await addDoc(collection(db, "items"), {
         ...form,
         searchTokens: tokens
       });
+
+      setResults(prev => [
+        { id: docRef.id, ...form, searchTokens: tokens },
+        ...prev
+      ]);
     }
 
     setOpen(false);
-    setSearch("");
-    setResults([]);
+    setEditing(null);
   };
 
   const removeItem = async (id) => {
@@ -165,15 +179,7 @@ function AdminPanel() {
   /* -------------------- UI -------------------- */
   return (
     <Box sx={{ p: 2 }}>
-      {/* HEADER */}
-      <Box
-        sx={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          mb: 2
-        }}
-      >
+      <Box sx={{ display: "flex", justifyContent: "space-between", mb: 2 }}>
         <Typography
           sx={{
             fontSize: "1.4rem",
@@ -190,7 +196,6 @@ function AdminPanel() {
         </IconButton>
       </Box>
 
-      {/* SEARCH BOX */}
       <Paper
         sx={{
           p: 1.5,
@@ -205,14 +210,11 @@ function AdminPanel() {
           placeholder="Search items"
           value={search}
           onChange={e => setSearch(e.target.value)}
-          InputProps={{
-            sx: { color: "#ff9800", fontSize: "1rem" }
-          }}
+          InputProps={{ sx: { color: "#ff9800" } }}
           sx={{ "& fieldset": { border: "none" } }}
         />
       </Paper>
 
-      {/* ADD BUTTON */}
       <Button
         fullWidth
         startIcon={<AddIcon />}
@@ -221,31 +223,24 @@ function AdminPanel() {
           mb: 2,
           bgcolor: "#333",
           color: "#ff9800",
-          borderRadius: 3,
-          py: 1
+          borderRadius: 3
         }}
       >
         Add Item
       </Button>
 
-      {/* RESULTS */}
       <List>
         {results.map(item => (
           <ListItem
             key={item.id}
-            sx={{
-              bgcolor: "#1e1e1e",
-              borderRadius: 3,
-              mb: 1.5,
-              p: 2
-            }}
+            sx={{ bgcolor: "#1e1e1e", borderRadius: 3, mb: 1.5 }}
           >
             <Box sx={{ flexGrow: 1 }}>
               <Typography sx={{ color: "#ff9800", fontWeight: 600 }}>
                 {item.itemDescription}
               </Typography>
               <Typography sx={{ fontSize: "0.85rem", color: "#aaa" }}>
-                UPC: {item.upcRetail || "—"} <br />
+                UPC: {item.upc || "—"} <br />
                 Item #: {item.itemNumber || "—"} <br />
                 Category: {item.category || "—"}
               </Typography>
@@ -262,14 +257,13 @@ function AdminPanel() {
         ))}
       </List>
 
-      {/* MODAL */}
       <Dialog open={open} onClose={() => setOpen(false)} fullWidth>
         <DialogTitle sx={{ bgcolor: "#222", color: "#ff9800" }}>
           {editing ? "Edit Item" : "Add Item"}
         </DialogTitle>
 
         <DialogContent sx={{ bgcolor: "#1c1c1c" }}>
-          {["itemDescription", "itemNumber", "upcRetail", "category"].map(f => (
+          {["itemDescription", "itemNumber", "upc", "category"].map(f => (
             <TextField
               key={f}
               fullWidth

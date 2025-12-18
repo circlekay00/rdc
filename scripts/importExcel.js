@@ -7,9 +7,8 @@
  * Excel Column Order (LEFT → RIGHT):
  * A: ITEM DESCRIPTION
  * B: CATEGORY
- * C: ITEM NUMBER
- * D: UPC Case
- * E: UPC Retail
+ * C: UPC
+ * D: ITEM NUMBER
  *
  * Features:
  * - Auto-creates `items` collection
@@ -97,17 +96,15 @@ async function importItems() {
     const item = {
       itemDescription: row[0]?.toString().trim() || "",
       category: row[1]?.toString().trim() || "",
-      itemNumber: row[2]?.toString().trim() || "",
-      upcCase: row[3]?.toString().trim() || "",
-      upcRetail: row[4]?.toString().trim() || ""
+      upc: row[2]?.toString().trim() || "",
+      itemNumber: row[3]?.toString().trim() || ""
     };
 
     const searchTokens = generateSearchTokens([
       item.itemDescription,
       item.category,
       item.itemNumber,
-      item.upcCase,
-      item.upcRetail
+      item.upc
     ]);
 
     const docRef = db.collection("items").doc();
@@ -126,7 +123,6 @@ async function importItems() {
     if (batchCount === 500) {
       await batch.commit();
       console.log(`✅ Committed ${totalCount} items...`);
-
       batch = db.batch();
       batchCount = 0;
     }

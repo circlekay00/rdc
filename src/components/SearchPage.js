@@ -23,12 +23,10 @@ function SearchPage() {
   const [loading, setLoading] = useState(false);
   const [debounced, setDebounced] = useState("");
 
-  /* 🔹 DEBOUNCE (INSTANT FEEL) */
   useEffect(() => {
     const t = setTimeout(() => {
       setDebounced(search);
-    }, 250); // ⚡ instant but safe
-
+    }, 250);
     return () => clearTimeout(t);
   }, [search]);
 
@@ -42,54 +40,37 @@ function SearchPage() {
       }
 
       const words = term.split(/\s+/);
-
       setLoading(true);
 
-      try {
-        /* 🔍 FIRESTORE QUERY (FIRST WORD ONLY) */
-        const q = query(
-          collection(db, "items"),
-          where("searchTokens", "array-contains", words[0])
-        );
+      const q = query(
+        collection(db, "items"),
+        where("searchTokens", "array-contains", words[0])
+      );
 
-        const snap = await getDocs(q);
+      const snap = await getDocs(q);
 
-        /* 🧠 MULTI-WORD FILTER + RANK */
-        const ranked = snap.docs
-          .map(d => ({ id: d.id, ...d.data() }))
-          .map(item => {
-            const tokens = item.searchTokens || [];
+      const ranked = snap.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .map(item => {
+          const tokens = item.searchTokens || [];
+          let score = 0;
+          let matchesAll = true;
 
-            let score = 0;
-            let matchesAll = true;
+          for (const w of words) {
+            if (tokens.includes(w)) score += 10;
+            else matchesAll = false;
+          }
 
-            for (const w of words) {
-              if (tokens.includes(w)) {
-                score += 10;
-              } else {
-                matchesAll = false;
-              }
-            }
+          if (item.itemDescription?.toLowerCase().includes(term)) {
+            score += 20;
+          }
 
-            // Boost exact description hits
-            if (
-              item.itemDescription
-                ?.toLowerCase()
-                .includes(term)
-            ) {
-              score += 20;
-            }
+          return matchesAll ? { ...item, score } : null;
+        })
+        .filter(Boolean)
+        .sort((a, b) => b.score - a.score);
 
-            return matchesAll ? { ...item, score } : null;
-          })
-          .filter(Boolean)
-          .sort((a, b) => b.score - a.score);
-
-        setResults(ranked);
-      } catch (err) {
-        console.error("Search error:", err);
-      }
-
+      setResults(ranked);
       setLoading(false);
     };
 
@@ -98,7 +79,6 @@ function SearchPage() {
 
   return (
     <Box sx={{ p: 2 }}>
-      {/* 🔶 TITLE */}
       <Typography
         sx={{
           textAlign: "center",
@@ -111,7 +91,6 @@ function SearchPage() {
         Questions | muhammad.azeem@circlek.com
       </Typography>
 
-      {/* 🔍 SEARCH */}
       <Paper
         elevation={4}
         sx={{
@@ -128,26 +107,18 @@ function SearchPage() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           InputProps={{
-            sx: {
-              color: "#fff",
-              fontSize: "1.05rem"
-            }
+            sx: { color: "#fff", fontSize: "1.05rem" }
           }}
-          sx={{
-            "& fieldset": { border: "none" },
-            input: { padding: "12px" }
-          }}
+          sx={{ "& fieldset": { border: "none" } }}
         />
       </Paper>
 
-      {/* 💤 EMPTY */}
       {!search && (
         <Typography sx={{ textAlign: "center", opacity: 0.6, mt: 4 }}>
           Start typing to search items
         </Typography>
       )}
 
-      {/* 🔎 RESULTS */}
       <List>
         {results.map(item => (
           <ListItem
@@ -174,7 +145,7 @@ function SearchPage() {
               </Typography>
 
               <Typography sx={{ fontSize: "0.85rem", color: "#aaa" }}>
-                UPC: {item.upcRetail || "—"} <br />
+                UPC: {item.upc || "—"} <br />
                 Item #: {item.itemNumber || "—"} <br />
                 Category: {item.category || "—"}
               </Typography>
